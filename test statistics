@@ -1,0 +1,338 @@
+### Расширение: Отчет Статистика типа expression для KFC
+### Проект:     KFC
+### Дата:       2020-01-10
+### Автор:      Андрей Ярмоленко (AY)
+###
+### История изменений:
+### 2020-01-10 - (AY) - создание
+###
+### Генерирует отчет типа expression по транзакциям, товарообороту, часам для гибких графиков, сменам и т.д.
+### Данные в таблицу собираются с помощью отдельной django команды run_report_task_director
+###
+
+from collections import OrderedDict
+from django.db.models import Sum
+from django.db.models.functions import Coalesce
+from django.utils import timezone
+
+from apps.metrics.calc import MetricCalc
+from apps.metrics.models import Metric
+from datetime import timedelta, time, datetime
+
+
+class KFCStatisticsReport:
+    # Название драйвера оборота за день
+    DRIVER_CODE_TURNOVER = 'oborot'
+    # Название драйвера количества транзакций
+    DRIVER_CODE_TRANSACTIONS = 'transactions'
+    # Название драйвера количества транзакций
+    DRIVER_CODE_RATE = 'rate'
+    # Название метрики основных смен
+    METRIC_CODE_REGULAR = 'scheduled_regular'
+    # Название метрики регламентных смен
+    METRIC_CODE_ROUTINE = 'scheduled_routine'
+    # Название метрики спланировано смен
+    METRIC_CODE_SCHEDULED_COUNT = 'scheduledCount_RR'
+    # Сдвиг времени в сутках (с какого часа начинаются сутки)
+    START_HOUR = 4
+
+    def __init__(self, report):
+
+        self.report = report
+        self.start_date = self.report.start_date
+        self.end_date = self.report.end_date
+
+        # Оформление
+        self.font_style_bold = False
+        self.cell_width = None
+        self.border = True
+        self.bg_color = None
+
+    def get_report_cells(self):
+        """
+        Лениво возвращает ячейки со значениями в формате "XLSX отчета"
+        """
+        # Генерируем шапку отчёта
+        start_date = self.report.start_date - timedelta(days=self.report.start_date.weekday())
+        end_date = start_date + timedelta(days=6)
+        weekdays = OrderedDict([(0, 'пн'), (1, 'вт'), (2, 'ср'), (3, 'чт'), (4, 'пт'), (5, 'сб'), (6, 'вс')])
+        for cell in self.get_headers(weekdays, start_date, end_date):
+            yield cell
+
+        # Начинаем enumerate со значения 6 т.к. уже вывели заголовок и шапку
+        for row_num, row in enumerate(self.get_report(weekdays, start_date, end_date), start=6):
+            if len(row) > len(weekdays) + 2:
+                for col_num, cell_data in enumerate(row):
+                    yield {
+                        'row': row_num, 'col': col_num,
+                        'value': row[col_num],
+                        'bold': self.font_style_bold, 'width': self.cell_width,
+                        'border': self.border, 'bg_color': self.bg_color,
+                        'colspan': None, 'rowspan': None
+                    }
+            else:
+                for col_num, cell_data in enumerate(row):
+                    yield {
+                        'row': row_num, 'col': col_num if col_num == 0 else col_num*2 - 1,
+                        'value': round(row[col_num], 2) if isinstance(row[col_num], float) else row[col_num],
+                        'bold': self.font_style_bold, 'width': 'auto' if col_num == 0 else self.cell_width,
+                        'border': self.border, 'bg_color': self.bg_color,
+                        'colspan': None if col_num == 0 or col_num == len(row)-1 else 1, 'rowspan': None
+                    }
+
+    def get_headers(self, weekdays, start_date, end_date):
+        """Возвращает ячейки шапки таблицы"""
+
+        unit_verbose_name = f'{self.report.orgunit.name} ({self.report.orgunit.code})'
+        tzinfo = self.report.orgunit.get_timezone()
+        dt_now = timezone.now()
+
+        # Заголовок
+        yield {'row': 0, 'col': 7,
+               'value': 'Статистика',
+               'bold': True, 'width': self.cell_width, 'border': False, 'bg_color': self.bg_color,
+               'colspan': None, 'rowspan': None}
+        yield {'row': 1, 'col': 6,
+               'value': unit_verbose_name,
+               'bold': True, 'width': self.cell_width, 'border': False, 'bg_color': self.bg_color,
+               'colspan': None, 'rowspan': None}
+
+        # Подпись
+        yield {'row': 45, 'col': 0,
+               'value': 'Отчёт выгрузил',
+               'bold': False, 'width': self.cell_width, 'border': False, 'bg_color': self.bg_color,
+               'colspan': None, 'rowspan': None}
+        yield {'row': 45, 'col': 1,
+               'value': self.report.employee.full_name,
+               'bold': False, 'width': self.cell_width, 'border': False, 'bg_color': self.bg_color,
+               'colspan': None, 'rowspan': None}
+        yield {'row': 45, 'col': 3,
+               'value': dt_now.astimezone(tzinfo).strftime('%d.%m.%Y %H:%M'),
+               'bold': False, 'width': self.cell_width, 'border': False, 'bg_color': self.bg_color,
+               'colspan': None, 'rowspan': None}
+
+        # Даты и дни недели
+        yield {'row': 2, 'col': 0,
+               'value': 'Неделя',
+               'bold': False, 'width': self.cell_width, 'border': False, 'bg_color': self.bg_color,
+               'colspan': None, 'rowspan': None}
+        yield {'row': 3, 'col': len(weekdays.items())*2 + 1,
+               'value': 'Неделя',
+               'bold': False, 'width': self.cell_width, 'border': True, 'bg_color': self.bg_color,
+               'colspan': None, 'rowspan': None}
+        yield {'row': 2, 'col': 1,
+               'value': f'{start_date.strftime("%d.%m.%Y")} - {end_date.strftime("%d.%m.%Y")}',
+               'bold': False, 'width': self.cell_width, 'border': False, 'bg_color': self.bg_color,
+               'colspan': 1, 'rowspan': None}
+
+        # Для каждого дня недели по колонке
+        for weekday in weekdays:
+            yield {'row': 3, 'col': 1 + weekday*2,
+                   'value': weekdays[weekday],
+                   'bold': False, 'width': self.cell_width, 'border': True, 'bg_color': self.bg_color,
+                   'colspan': 1, 'rowspan': None}
+            yield {'row': 4, 'col': 1 + weekday*2,
+                   'value': (start_date + timedelta(days=weekday)).strftime("%d.%m.%Y"),
+                   'bold': False, 'width': self.cell_width, 'border': True, 'bg_color': self.bg_color,
+                   'colspan': 1, 'rowspan': None}
+            yield {'row': 5, 'col': 1 + weekday*2,
+                   'value': 'Транзакции',
+                   'bold': False, 'width': 'auto', 'border': True, 'bg_color': self.bg_color,
+                   'colspan': None, 'rowspan': None}
+            yield {'row': 5, 'col': 2 + weekday*2,
+                   'value': 'ТО',
+                   'bold': False, 'width': self.cell_width, 'border': True, 'bg_color': self.bg_color,
+                   'colspan': None, 'rowspan': None}
+
+    def get_report(self, weekdays, start_date, end_date):
+        """
+        Возвращает строки отчета из БД
+        :rtype: collections.Iterator[tuple]
+        """
+        from django.contrib.contenttypes.models import ContentType
+        from apps.drivers.models import BusinessDriver, DriverData
+        from apps.orgunits.models import Department, Organization
+        from datetime import timedelta
+
+        unit_type = ContentType.objects.get_for_model(self.report.orgunit).model
+        if unit_type == 'organization':
+            organization = Organization.objects.filter(id=self.report.orgunit.id).first()
+            departments = Department.objects.filter(organization=organization)
+            tzinfo = organization.get_timezone()
+        else:  # unit_type == 'department'
+            departments = Department.objects.filter(id=self.report.orgunit.id)
+            tzinfo = departments.first().get_timezone()
+
+        """ Данные из бизенс-драйверов """
+        driver_turnover = BusinessDriver.objects.filter(code=self.DRIVER_CODE_TURNOVER).first()
+        driver_transactions = BusinessDriver.objects.filter(code=self.DRIVER_CODE_TRANSACTIONS).first()
+        driver_rate = BusinessDriver.objects.filter(code=self.DRIVER_CODE_RATE).first()
+
+        # Забиваем нулями подсчёт Итого
+        daily_transactions = ['Сумма Транзакции'] + [0 for _ in weekdays]
+        weekly_transactions = 0
+        daily_turnover = ['Сумма Товарооборот'] + [0 for _ in weekdays]
+        weekly_turnover = 0
+
+        organization_ctype = ContentType.objects.get_for_model(Organization)
+        department_ctype = ContentType.objects.get_for_model(Department)
+        hours_list = list(range(self.START_HOUR, 24)) + list(range(self.START_HOUR))
+
+        for hn, hour in enumerate(hours_list):
+            row_time = time(hour, 0, 0)
+            row_data = [row_time.strftime('%H:%M')] + [0 for _ in weekdays] * 2
+            for day in weekdays:
+                col_date = start_date + timedelta(days=day)
+
+                # Если время позже 24:00 то это уже следующие сутки
+                col_date = col_date if hour >= self.START_HOUR else col_date + timedelta(days=1)
+
+                # Начало и конец часового интервала
+                cell_start_dt = tzinfo.localize(datetime.combine(col_date, row_time))
+                cell_end_dt = tzinfo.localize(datetime.combine(col_date, row_time) + timedelta(hours=1))
+
+                # Транзакции
+                driver_data_transactions = DriverData.objects.filter(driver=driver_transactions,
+                                                                     unit_type=department_ctype,
+                                                                     unit_id__in=departments,
+                                                                     dtime__gte=cell_start_dt, dtime__lt=cell_end_dt)
+                if driver_data_transactions.exists():
+                    cell_value = driver_data_transactions.aggregate(
+                        value=Sum(Coalesce('avalue', 'fvalue', 'hvalue')))['value']
+                    if cell_value:
+                        row_data[1 + day*2] = cell_value
+                        daily_transactions[day + 1] += cell_value
+                        weekly_transactions += cell_value
+
+                # Товарооборот
+                driver_data_turnover = DriverData.objects.filter(driver=driver_turnover,
+                                                                 unit_type=department_ctype,
+                                                                 unit_id__in=departments,
+                                                                 dtime__gte=cell_start_dt, dtime__lt=cell_end_dt)
+                if driver_data_turnover.exists():
+                    cell_value = driver_data_turnover.aggregate(
+                        value=Sum(Coalesce('avalue', 'fvalue', 'hvalue')))['value']
+                    if cell_value:
+                        row_data[1 + day*2 + 1] = cell_value
+                        daily_turnover[day + 1] += cell_value
+                        weekly_turnover += cell_value
+
+            yield row_data
+
+        # Выводим итоги
+        daily_transactions.append(weekly_transactions)
+        daily_turnover.append(weekly_turnover)
+        yield daily_transactions
+        yield daily_turnover
+
+        # Отступ
+        yield ['']
+
+        """ Данные из метрик """
+        metric_ctype = ContentType.objects.get_for_model(Metric)
+        metric_regular = Metric.objects.filter(code=self.METRIC_CODE_REGULAR).first()
+        metric_routine = Metric.objects.filter(code=self.METRIC_CODE_ROUTINE).first()
+        metric_scheduled_count = Metric.objects.filter(code=self.METRIC_CODE_SCHEDULED_COUNT).first()
+
+        class MetricCalcDT(MetricCalc):
+            def __init__(self, start_date, end_date, start_dtime, end_dtime):
+                super().__init__(start_date, end_date)
+                self.start_dtime, self.end_dtime = start_dtime, end_dtime
+
+        daily_metric_regular = ['Производственные часы']
+        weekly_metric_regular = 0
+        daily_metric_routine = ['Не производственные часы']
+        weekly_metric_routine = 0
+        daily_metric_scheduled_count = ['Всего смен']
+        weekly_metric_scheduled_count = 0
+        start_dt = tzinfo.localize(datetime.combine(start_date, time(0, 0, 0)))
+
+        for day in weekdays:
+            # Начало и конец часового интервала
+            cell_start_dt = start_dt + timedelta(days=day)
+            cell_end_dt = start_dt + timedelta(days=day+1)
+
+            # Метрики
+            calc = MetricCalcDT(cell_start_dt.date(), cell_end_dt.date(), cell_start_dt, cell_end_dt)
+
+            metric_value_regular = calc.calc_value(metric_regular, self.report.orgunit)/3600
+            daily_metric_regular.append(metric_value_regular)
+            weekly_metric_regular += metric_value_regular
+
+            metric_value_routine = calc.calc_value(metric_routine, self.report.orgunit)/3600
+            daily_metric_routine.append(metric_value_routine)
+            weekly_metric_routine += metric_value_routine
+
+            metric_value_scheduled_count = calc.calc_value(metric_scheduled_count, self.report.orgunit)
+            daily_metric_scheduled_count.append(metric_value_scheduled_count)
+            weekly_metric_scheduled_count += metric_value_scheduled_count
+
+        daily_metric_regular.append(weekly_metric_regular)
+        daily_metric_routine.append(weekly_metric_routine)
+        daily_metric_scheduled_count.append(weekly_metric_scheduled_count)
+        yield daily_metric_regular
+        yield daily_metric_routine
+
+        """Расчёт на основе полученных ранее денных"""
+        daily_metric_scheduled = ['Общие часы']
+        daily_metric_scheduled.extend([i for i in map(lambda regular, routine: regular + routine,
+                                                      daily_metric_regular[1:], daily_metric_routine[1:])])
+        yield daily_metric_scheduled
+
+        # Отступ
+        yield ['']
+
+        """Получение средней ставки из бизнес-драйвера"""
+        daily_rate = ['Средняя ставка'] + [0 for _ in weekdays]
+
+        for day in weekdays:
+            # Даже если время перевалило за полночь - считаем по данным предыдущего дня
+            col_date = tzinfo.localize(datetime.combine(start_date + timedelta(days=day), time(0, 0)))
+
+            # Ставка на день
+            driver_data_rate = DriverData.objects.filter(driver=driver_rate,
+                                                         unit_type=department_ctype,
+                                                         unit_id__in=departments,
+                                                         dtime__gte=col_date, dtime__lt=col_date + timedelta(days=1))
+            if driver_data_rate.exists():
+                cell_value = driver_data_rate.aggregate(value=Sum('hvalue'))['value']/departments.count()
+                daily_rate[day + 1] += cell_value
+
+        weekly_rate = sum(daily_rate[1:])/len(daily_rate[1:]) if len(daily_rate[1:]) else 0
+        daily_rate.append(weekly_rate)
+        yield daily_rate
+
+        """Расчёт на основе полученных ранее денных"""
+        daily_labor_cost = ['Labor Cost']
+        daily_labor_cost.extend([i for i in map(lambda scheduled, rate: scheduled * rate,
+                                                      daily_metric_scheduled[1:], daily_rate[1:])])
+        yield daily_labor_cost
+
+        daily_labor_share = ['Labor %']
+        daily_labor_share.extend([i for i in map(lambda turnover, labor_cost: turnover / labor_cost if labor_cost else 0,
+                                                      daily_turnover[1:], daily_labor_cost[1:])])
+        yield daily_labor_share
+
+        daily_spmh = ['SPMH (производительность)']
+        daily_spmh.extend([i for i in map(lambda turnover, scheduled: turnover / scheduled if scheduled else 0,
+                                                      daily_turnover[1:], daily_metric_scheduled[1:])])
+        yield daily_spmh
+
+        daily_gcph = ['GCPH (количество заказов в час)']
+        daily_gcph.extend([i for i in map(lambda transactions, scheduled: transactions / scheduled if scheduled else 0,
+                                                      daily_transactions[1:], daily_metric_scheduled[1:])])
+        yield daily_gcph
+
+        # Отступ
+        yield ['']
+
+        yield daily_metric_scheduled_count
+
+
+employee_report = KFCStatisticsReport(self)
+for cell in employee_report.get_report_cells():
+    if cell['col'] >= self.total_cols_count:
+        self.total_cols_count = cell['col'] + 1
+    if cell['row'] >= self.total_rows_count:
+        self.total_rows_count = cell['row'] + 1
+    self.write_cell(cell)
