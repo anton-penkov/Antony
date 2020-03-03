@@ -44,7 +44,7 @@ class KFCStatisticsReport:
 
         # Оформление
         self.font_style_bold = False
-        self.cell_width = None
+        self.cell_width = 4
         self.border = True
         self.bg_color = None
 
@@ -66,7 +66,7 @@ class KFCStatisticsReport:
                     yield {
                         'row': row_num, 'col': col_num,
                         'value': row[col_num],
-                        'bold': self.font_style_bold, 'width': self.cell_width,
+                        'bold': self.font_style_bold, 'width': 4,
                         'border': self.border, 'bg_color': self.bg_color,
                         'colspan': None, 'rowspan': None
                     }
@@ -75,7 +75,7 @@ class KFCStatisticsReport:
                     yield {
                         'row': row_num, 'col': col_num if col_num == 0 else col_num*2 - 1,
                         'value': round(row[col_num], 2) if isinstance(row[col_num], float) else row[col_num],
-                        'bold': self.font_style_bold, 'width': 'auto' if col_num == 0 else self.cell_width,
+                        'bold': self.font_style_bold, 'width': '4' if col_num == 0 else self.cell_width,
                         'border': self.border, 'bg_color': self.bg_color,
                         'colspan': None if col_num == 0 or col_num == len(row)-1 else 1, 'rowspan': None
                     }
@@ -90,58 +90,58 @@ class KFCStatisticsReport:
         # Заголовок
         yield {'row': 0, 'col': 7,
                'value': 'Статистика',
-               'bold': True, 'width': self.cell_width, 'border': False, 'bg_color': self.bg_color,
+               'bold': True, 'width': 4, 'border': False, 'bg_color': self.bg_color,
                'colspan': None, 'rowspan': None}
         yield {'row': 1, 'col': 6,
                'value': unit_verbose_name,
-               'bold': True, 'width': self.cell_width, 'border': False, 'bg_color': self.bg_color,
+               'bold': True, 'width': 4, 'border': False, 'bg_color': self.bg_color,
                'colspan': None, 'rowspan': None}
 
         # Подпись
         yield {'row': 45, 'col': 0,
                'value': 'Отчёт выгрузил',
-               'bold': False, 'width': self.cell_width, 'border': False, 'bg_color': self.bg_color,
+               'bold': False, 'width': 4, 'border': False, 'bg_color': self.bg_color,
                'colspan': None, 'rowspan': None}
         yield {'row': 45, 'col': 1,
                'value': self.report.employee.full_name,
-               'bold': False, 'width': self.cell_width, 'border': False, 'bg_color': self.bg_color,
+               'bold': False, 'width': 4, 'border': False, 'bg_color': self.bg_color,
                'colspan': None, 'rowspan': None}
         yield {'row': 45, 'col': 3,
                'value': dt_now.astimezone(tzinfo).strftime('%d.%m.%Y %H:%M'),
-               'bold': False, 'width': self.cell_width, 'border': False, 'bg_color': self.bg_color,
+               'bold': False, 'width': 4, 'border': False, 'bg_color': self.bg_color,
                'colspan': None, 'rowspan': None}
 
         # Даты и дни недели
         yield {'row': 2, 'col': 0,
                'value': 'Неделя',
-               'bold': False, 'width': self.cell_width, 'border': False, 'bg_color': self.bg_color,
+               'bold': False, 'width': 4, 'border': False, 'bg_color': self.bg_color,
                'colspan': None, 'rowspan': None}
         yield {'row': 3, 'col': len(weekdays.items())*2 + 1,
                'value': 'Неделя',
-               'bold': False, 'width': self.cell_width, 'border': True, 'bg_color': self.bg_color,
+               'bold': False, 'width': 4, 'border': True, 'bg_color': self.bg_color,
                'colspan': None, 'rowspan': None}
         yield {'row': 2, 'col': 1,
                'value': f'{start_date.strftime("%d.%m.%Y")} - {end_date.strftime("%d.%m.%Y")}',
-               'bold': False, 'width': self.cell_width, 'border': False, 'bg_color': self.bg_color,
+               'bold': False, 'width': 4, 'border': False, 'bg_color': self.bg_color,
                'colspan': 1, 'rowspan': None}
 
         # Для каждого дня недели по колонке
         for weekday in weekdays:
             yield {'row': 3, 'col': 1 + weekday*2,
                    'value': weekdays[weekday],
-                   'bold': False, 'width': self.cell_width, 'border': True, 'bg_color': self.bg_color,
+                   'bold': False, 'width': 4, 'border': True, 'bg_color': self.bg_color,
                    'colspan': 1, 'rowspan': None}
             yield {'row': 4, 'col': 1 + weekday*2,
                    'value': (start_date + timedelta(days=weekday)).strftime("%d.%m.%Y"),
-                   'bold': False, 'width': self.cell_width, 'border': True, 'bg_color': self.bg_color,
+                   'bold': False, 'width': 4, 'border': True, 'bg_color': self.bg_color,
                    'colspan': 1, 'rowspan': None}
             yield {'row': 5, 'col': 1 + weekday*2,
                    'value': 'Транзакции',
-                   'bold': False, 'width': 'auto', 'border': True, 'bg_color': self.bg_color,
+                   'bold': False, 'width': '4', 'border': True, 'bg_color': self.bg_color,
                    'colspan': None, 'rowspan': None}
             yield {'row': 5, 'col': 2 + weekday*2,
                    'value': 'ТО',
-                   'bold': False, 'width': self.cell_width, 'border': True, 'bg_color': self.bg_color,
+                   'bold': False, 'width': 4, 'border': True, 'bg_color': self.bg_color,
                    'colspan': None, 'rowspan': None}
 
     def get_report(self, weekdays, start_date, end_date):
