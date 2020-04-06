@@ -1,9 +1,11 @@
 ### Расширение: Отчет Статистика типа expression для KFC
 ### Проект:     KFC
 ### Дата:       2020-01-10
+### Доработка:  Константин Кононенко (КК)
 ### Автор:      Андрей Ярмоленко (AY)
 ###
 ### История изменений:
+### 2020-04-02 - (КК) - доработка: стилизация отчета, формат числовых ячеек
 ### 2020-01-10 - (AY) - создание
 ###
 ### Генерирует отчет типа expression по транзакциям, товарообороту, часам для гибких графиков, сменам и т.д.
@@ -22,7 +24,7 @@ from datetime import timedelta, time, datetime
 
 class KFCStatisticsReport:
     # Название драйвера оборота за день
-    DRIVER_CODE_TURNOVER = 'oborot'
+    DRIVER_CODE_TURNOVER = 'turnover'
     # Название драйвера количества транзакций
     DRIVER_CODE_TRANSACTIONS = 'transactions'
     # Название драйвера количества транзакций
@@ -43,8 +45,8 @@ class KFCStatisticsReport:
         self.end_date = self.report.end_date
 
         # Оформление
-        self.font_style_bold = False
-        self.cell_width = 4
+        self.font_style_bold = True
+        self.cell_width = 5
         self.border = True
         self.bg_color = None
 
@@ -66,8 +68,12 @@ class KFCStatisticsReport:
                     yield {
                         'row': row_num, 'col': col_num,
                         'value': row[col_num],
-                        'bold': self.font_style_bold, 'width': 4,
-                        'border': self.border, 'bg_color': self.bg_color,
+                        'num_format_str': '# ##0.0' if col_num != 0 else None,
+                        'bold': self.font_style_bold if col_num == 0 else False, 
+                        'align': 'horizontal right' if col_num == 0 else '',
+                        'width': 10,
+                        'border': self.border, 
+                        'bg_color': (222,222,222) if col_num == 0 else None,
                         'colspan': None, 'rowspan': None
                     }
             else:
@@ -75,8 +81,11 @@ class KFCStatisticsReport:
                     yield {
                         'row': row_num, 'col': col_num if col_num == 0 else col_num*2 - 1,
                         'value': round(row[col_num], 2) if isinstance(row[col_num], float) else row[col_num],
-                        'bold': self.font_style_bold, 'width': '4' if col_num == 0 else self.cell_width,
-                        'border': self.border, 'bg_color': self.bg_color,
+                        'num_format_str': '# ##0.0' if col_num != 0 else None,
+                        'bold': self.font_style_bold if row_num <= 31 else False, 
+                        'width': 15 if col_num == 0 or col_num == 8 else self.cell_width,
+                        'border': self.border, 
+                        'bg_color': self.bg_color,
                         'colspan': None if col_num == 0 or col_num == len(row)-1 else 1, 'rowspan': None
                     }
 
@@ -90,58 +99,90 @@ class KFCStatisticsReport:
         # Заголовок
         yield {'row': 0, 'col': 7,
                'value': 'Статистика',
-               'bold': True, 'width': 4, 'border': False, 'bg_color': self.bg_color,
+               'bold': True, 'width': self.cell_width, 'border': False, 'bg_color': self.bg_color,
                'colspan': None, 'rowspan': None}
         yield {'row': 1, 'col': 6,
                'value': unit_verbose_name,
-               'bold': True, 'width': 4, 'border': False, 'bg_color': self.bg_color,
+               'bold': True, 'width': self.cell_width, 'border': False, 'bg_color': self.bg_color, 
                'colspan': None, 'rowspan': None}
 
         # Подпись
         yield {'row': 45, 'col': 0,
                'value': 'Отчёт выгрузил',
-               'bold': False, 'width': 4, 'border': False, 'bg_color': self.bg_color,
+               'bold': False, 
+               'width': self.cell_width, 
+               'border': False, 
+               'bg_color': self.bg_color,
                'colspan': None, 'rowspan': None}
         yield {'row': 45, 'col': 1,
                'value': self.report.employee.full_name,
-               'bold': False, 'width': 4, 'border': False, 'bg_color': self.bg_color,
+               'bold': False, 
+               'width': self.cell_width, 
+               'border': False, 
+               'bg_color': self.bg_color,
                'colspan': None, 'rowspan': None}
         yield {'row': 45, 'col': 3,
                'value': dt_now.astimezone(tzinfo).strftime('%d.%m.%Y %H:%M'),
-               'bold': False, 'width': 4, 'border': False, 'bg_color': self.bg_color,
+               'bold': False, 
+               'width': self.cell_width, 
+               'border': False, 
+               'bg_color': self.bg_color,
                'colspan': None, 'rowspan': None}
 
         # Даты и дни недели
         yield {'row': 2, 'col': 0,
                'value': 'Неделя',
-               'bold': False, 'width': 4, 'border': False, 'bg_color': self.bg_color,
+               'bold': False, 
+               'width': self.cell_width, 
+               'border': False, 
+               'bg_color': self.bg_color,
                'colspan': None, 'rowspan': None}
         yield {'row': 3, 'col': len(weekdays.items())*2 + 1,
                'value': 'Неделя',
-               'bold': False, 'width': 4, 'border': True, 'bg_color': self.bg_color,
+               'bold': False, 
+               'width': self.cell_width, 
+               'border': True, 
+               'bg_color': self.bg_color,
                'colspan': None, 'rowspan': None}
         yield {'row': 2, 'col': 1,
                'value': f'{start_date.strftime("%d.%m.%Y")} - {end_date.strftime("%d.%m.%Y")}',
-               'bold': False, 'width': 4, 'border': False, 'bg_color': self.bg_color,
-               'colspan': 1, 'rowspan': None}
+               'bold': False, 
+               'width': self.cell_width, 
+               'border': False, 
+               'bg_color': self.bg_color,
+               'colspan': 2, 'rowspan': None}
 
         # Для каждого дня недели по колонке
         for weekday in weekdays:
             yield {'row': 3, 'col': 1 + weekday*2,
                    'value': weekdays[weekday],
-                   'bold': False, 'width': 4, 'border': True, 'bg_color': self.bg_color,
+                   'bold': True, 
+                   'width': self.cell_width, 
+                   'border': True, 
+                   'bg_color': (222,222,222),
+                   'align': 'horizontal center',
                    'colspan': 1, 'rowspan': None}
             yield {'row': 4, 'col': 1 + weekday*2,
                    'value': (start_date + timedelta(days=weekday)).strftime("%d.%m.%Y"),
-                   'bold': False, 'width': 4, 'border': True, 'bg_color': self.bg_color,
+                   'bold': True, 
+                   'width': self.cell_width, 
+                   'border': True, 
+                   'bg_color': (180,180,180),
+                   'align': 'horizontal center',
                    'colspan': 1, 'rowspan': None}
             yield {'row': 5, 'col': 1 + weekday*2,
                    'value': 'Транзакции',
-                   'bold': False, 'width': '4', 'border': True, 'bg_color': self.bg_color,
+                   'bold': False, 
+                   'width': self.cell_width, 
+                   'border': True, 
+                   'bg_color': self.bg_color,
                    'colspan': None, 'rowspan': None}
             yield {'row': 5, 'col': 2 + weekday*2,
                    'value': 'ТО',
-                   'bold': False, 'width': 4, 'border': True, 'bg_color': self.bg_color,
+                   'bold': False, 
+                   'width': self.cell_width*2, 
+                   'border': True, 
+                   'bg_color': self.bg_color,
                    'colspan': None, 'rowspan': None}
 
     def get_report(self, weekdays, start_date, end_date):
@@ -171,7 +212,7 @@ class KFCStatisticsReport:
         # Забиваем нулями подсчёт Итого
         daily_transactions = ['Сумма Транзакции'] + [0 for _ in weekdays]
         weekly_transactions = 0
-        daily_turnover = ['Сумма Товарооборот'] + [0 for _ in weekdays]
+        daily_turnover = ['Сумма ТО'] + [0 for _ in weekdays]
         weekly_turnover = 0
 
         organization_ctype = ContentType.objects.get_for_model(Organization)
@@ -273,7 +314,7 @@ class KFCStatisticsReport:
         yield daily_metric_regular
         yield daily_metric_routine
 
-        """Расчёт на основе полученных ранее денных"""
+        """Расчёт на основе полученных ранее данных"""
         daily_metric_scheduled = ['Общие часы']
         daily_metric_scheduled.extend([i for i in map(lambda regular, routine: regular + routine,
                                                       daily_metric_regular[1:], daily_metric_routine[1:])])
@@ -295,14 +336,14 @@ class KFCStatisticsReport:
                                                          unit_id__in=departments,
                                                          dtime__gte=col_date, dtime__lt=col_date + timedelta(days=1))
             if driver_data_rate.exists():
-                cell_value = driver_data_rate.aggregate(value=Sum('hvalue'))['value']/departments.count()
-                daily_rate[day + 1] += cell_value
+                cell_value = driver_data_rate.aggregate(value=Sum('hvalue'))['value']
+                daily_rate[day + 1] += cell_value/departments.count() if cell_value else 0
 
         weekly_rate = sum(daily_rate[1:])/len(daily_rate[1:]) if len(daily_rate[1:]) else 0
         daily_rate.append(weekly_rate)
         yield daily_rate
 
-        """Расчёт на основе полученных ранее денных"""
+        """Расчёт на основе полученных ранее данных"""
         daily_labor_cost = ['Labor Cost']
         daily_labor_cost.extend([i for i in map(lambda scheduled, rate: scheduled * rate,
                                                       daily_metric_scheduled[1:], daily_rate[1:])])
